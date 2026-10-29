@@ -1,0 +1,10 @@
+.DS_Store
+.idea
+.vscode
+*.swp
+build/
+labs/**/local-resources
+# Pre-staged lab artifacts (built by scripts/, uploaded to the academy bucket, never committed)
+application-advisor-cli-linux*.tar
+spring-enterprise-repo*.tar.gz
+work/

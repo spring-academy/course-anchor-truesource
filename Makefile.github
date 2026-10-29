@@ -1,0 +1,7 @@
+NAME                  = spring-anchor
+IMAGE_SOURCE          = https://github.com/spring-academy/course-anchor-truesource
+CONTAINER_REGISTRY    = ghcr.io/spring-academy/
+CONTAINER_REPOSITORY  = spring-anchor
+version               = latest
+
+env                   = github

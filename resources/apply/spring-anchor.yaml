@@ -1,0 +1,632 @@
+apiVersion: training.educates.dev/v1beta1
+kind: Workshop
+metadata:
+  name: spring-anchor
+spec:
+  title: Spring Academy - Experience TrueSource by Broadcom
+  description: "Find a CVE with no open source fix, compare the upgrade-or-exposed choice with a CVE-only Spring Enterprise patch, then verify signed, provenance-attested Bitnami Secure Images before you pull them"
+  difficulty: beginner
+  duration: 45m
+  vendor: Broadcom
+  workshop:
+    image: jdk17-environment:*
+    files:
+      - http:
+          url: "$(ingress_protocol)://$(assets_repository)/$(workshop_name).tar.gz"
+  request:
+    parameters:
+    - name: USER_DOMAIN
+      value: "unknown.domain"
+    - name: USER_EMAIL
+      value: "somebody@unknown.domain"
+  session:
+    namespaces:
+      security:
+        token:
+          # The learner doesn't need access to the Educates session namespace.
+          enabled: false
+    env:
+    - name: LAB_VERSION
+      value: "${VERSION}"
+    - name: WEBSERVER
+      value: "$(ingress_protocol)://$(assets_repository)"
+    - name: BOOTSTRAP_COMMAND
+      value: ":"
+    # Location of the pre-staged copy of the Spring Enterprise repository, see
+    # the download-spring-enterprise-repo initContainer below.
+    - name: SPRING_ENTERPRISE_REPO_DIR
+      value: /opt/spring-enterprise-repo
+    # Session pods can't reach the internet directly (see the NetworkPolicies
+    # below). Files and a Maven Central mirror come from the lab-services pod,
+    # and the few public hosts the workshop teaches with go through its proxy,
+    # which the workshop profile sets up for the learner's terminals only.
+    - name: LAB_FILES_URL
+      value: "http://lab-services:8080/files"
+    - name: MAVEN_MIRROR_URL
+      value: "http://lab-services:8080/maven2"
+    # The vulnerability databases come with the tools bundle
+    - name: TRIVY_SKIP_DB_UPDATE
+      value: "true"
+    - name: TRIVY_SKIP_JAVA_DB_UPDATE
+      value: "true"
+    resources:
+      memory: 4Gi
+    ingresses:
+    - name: petclinic
+      port: 8080
+    applications:
+      terminal:
+        enabled: true
+        layout: split
+      editor:
+        enabled: true
+      git:
+        enabled: true
+    volumeMounts:
+    - name: binaries
+      mountPath: /home/eduk8s/bin/advisor
+      subPath: advisor
+    - name: spring-enterprise-repo
+      mountPath: /opt/spring-enterprise-repo
+      readOnly: true
+    initContainers:
+    # Spring Application Advisor CLI. lab-services holds the tarball behind a
+    # token that is only mounted into this initContainer.
+    - name: download-app-advisor-cli
+      image: ghcr.io/vmware-tanzu-labs/educates-base-environment:2.5.2
+      imagePullPolicy: $(workshop_image_pull_policy)
+      command: ["/bin/bash"]
+      args:
+        - "-c"
+        - |
+          set -eo pipefail
+          cd /opt/spring/bin
+          until curl -sf -H "X-Lab-Token: ${LAB_VAULT_TOKEN}" -o ${DESTINATION_FILE_NAME}.tar http://lab-services:8080/private/advisor.tar; do
+            echo "Waiting for lab-services to publish the advisor CLI"
+            sleep 5
+          done
+          tar -xvf ${DESTINATION_FILE_NAME}.tar
+          mv cli-binary/advisor ${DESTINATION_FILE_NAME}
+          chmod 111 ${DESTINATION_FILE_NAME}
+          rm -rf ${DESTINATION_FILE_NAME}.tar cli-binary
+      env:
+        - name: DESTINATION_FILE_NAME
+          value: "advisor"
+        - name: LAB_VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: advisor-vault
+              key: token
+      volumeMounts:
+        - name: binaries
+          mountPath: /opt/spring/bin/
+    # Pinned snapshot of the Spring Enterprise artifacts the lab needs (Spring
+    # Boot 3.5.17 and its managed dependencies), in remote repository layout.
+    # Built once with a real Spring Enterprise token by
+    # scripts/build-spring-enterprise-repo.sh, so the lab never authenticates
+    # against packages.broadcom.com. lab-services downloads it from the bucket
+    # once per workshop environment (source: SOURCE_FILE_NAME of its
+    # download-private-artifacts initContainer).
+    #
+    # If the archive isn't available, this initContainer only logs a warning,
+    # so sessions still start and every page except "The TrueSource Path" works.
+    - name: download-spring-enterprise-repo
+      image: ghcr.io/vmware-tanzu-labs/educates-base-environment:2.5.2
+      imagePullPolicy: $(workshop_image_pull_policy)
+      command: ["/bin/bash"]
+      args:
+        - "-c"
+        - |
+          set -eo pipefail
+          for i in $(seq 1 120); do
+            curl -sf -H "X-Lab-Token: ${LAB_VAULT_TOKEN}" -o /tmp/repo.tar.gz http://lab-services:8080/private/spring-enterprise-repo.tar.gz && break
+            echo "Waiting for lab-services to publish the Spring Enterprise archive ($i/120)"
+            sleep 5
+          done
+          if [ -s /tmp/repo.tar.gz ]; then
+            # Extract in a directory we own: the archive's "." entry would make
+            # tar try to change the mode of the (root-owned) volume mount
+            mkdir /tmp/repo
+            tar -xzf /tmp/repo.tar.gz -C /tmp/repo
+            cp -r /tmp/repo/. /opt/spring-enterprise-repo/
+            rm -f /tmp/repo.tar.gz
+            find /opt/spring-enterprise-repo -mindepth 1 -exec chmod a+rX {} +
+          else
+            echo "WARNING: Spring Enterprise archive not available, artifacts are not pre-staged"
+          fi
+      env:
+        - name: LAB_VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: advisor-vault
+              key: token
+      volumeMounts:
+        - name: spring-enterprise-repo
+          mountPath: /opt/spring-enterprise-repo
+    volumes:
+    - name: binaries
+      emptyDir: {}
+    - name: spring-enterprise-repo
+      emptyDir: {}
+  environment:
+    assets:
+      memory: 0Mi
+      ingress:
+        enabled: true
+      files:
+        - image:
+            url: ${CONTAINER_REGISTRY}${CONTAINER_REPOSITORY}:${VERSION}
+          newRootPath: usr/share/nginx/html
+    objects:
+    # Copies the bucket reader key into the workshop namespaces. The source
+    # secret must exist in the spring-academy namespace of each Spring Academy cluster.
+    - apiVersion: secrets.educates.dev/v1beta1
+      kind: SecretCopier
+      metadata:
+        name: $(workshop_namespace)-spring-anchor-gcp
+      spec:
+        rules:
+        - sourceSecret:
+            name: gcp
+            namespace: spring-academy
+          targetSecret:
+            name: gcp
+          targetNamespaces:
+            nameSelector:
+              matchNames:
+              - spring-anchor-*
+    - apiVersion: secrets.educates.dev/v1beta1
+      kind: SecretCopier
+      metadata:
+        name: $(workshop_namespace)-spring-anchor-advisor-vault
+      spec:
+        rules:
+        - sourceSecret:
+            name: advisor-vault
+            namespace: spring-academy
+          targetSecret:
+            name: advisor-vault
+          targetNamespaces:
+            nameSelector:
+              matchNames:
+              - spring-anchor-*
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: network-policy-creator
+      rules:
+      - apiGroups:
+        - networking.k8s.io
+        resources:
+        - networkpolicies
+        verbs:
+        - create
+        - get
+        - update
+        - delete
+        - patch
+    - apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: network-policy-manager
+    - apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: network-policy-creator-binding
+      subjects:
+      - kind: ServiceAccount
+        name: network-policy-manager
+      roleRef:
+        kind: Role
+        name: network-policy-creator
+        apiGroup: rbac.authorization.k8s.io
+    - apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: replace-default-network-policy
+      spec:
+        ttlSecondsAfterFinished: 1000
+        template:
+          spec:
+            serviceAccountName: network-policy-manager
+            restartPolicy: Never
+            containers:
+            - name: deny-all-policy-updater
+              image: ghcr.io/vmware-tanzu-labs/educates-base-environment:latest
+              command:
+              - /bin/bash
+              - -c
+              args:
+              - |
+                kubectl -s https://kubernetes.default:443 --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                  --token=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) \
+                  -n $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace) \
+                  patch networkpolicy educates-network-policy --type=strategic \
+                  --patch '{"spec": {"egress": [], "policyTypes": ["Egress"]}}'
+              volumeMounts:
+              - name: sa-token-volume
+                mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+                readOnly: true
+            volumes:
+            - name: sa-token-volume
+              projected:
+                sources:
+                - serviceAccountToken:
+                    path: token
+                    expirationSeconds: 3600
+                - configMap:
+                    name: kube-root-ca.crt
+                    items:
+                    - key: ca.crt
+                      path: ca.crt
+                - downwardAPI:
+                    items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: educates-network-policy-egress-allow-private
+      spec:
+        podSelector:
+          matchLabels:
+            training.educates.dev/component: session
+            training.educates.dev/workshop.name: spring-anchor
+        policyTypes:
+        - Egress
+        egress:
+        - to:
+          - ipBlock:
+              cidr: 10.0.0.0/8
+          - ipBlock:
+              cidr: 172.16.0.0/12
+          - ipBlock:
+              cidr: 192.168.0.0/16
+    - apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: educates-network-policy-egress-allow-all
+      spec:
+        podSelector:
+          matchExpressions:
+            - key: deployment
+              operator: In
+              values:
+              - assets-server
+              - lab-services
+        policyTypes:
+        - Egress
+        egress:
+        - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: lab-services-nginx
+      data:
+        default.conf.template: |
+          proxy_cache_path /tmp/maven-cache levels=1:2 keys_zone=maven:10m max_size=5g inactive=30d use_temp_path=off;
+          server {
+            listen 8080;
+
+            # Read-only caching proxy of Maven Central for session pods
+            location /maven2/ {
+              limit_except GET HEAD { deny all; }
+              proxy_pass https://repo.maven.apache.org/maven2/;
+              proxy_ssl_server_name on;
+              proxy_cache maven;
+              proxy_cache_valid 200 301 302 12h;
+              proxy_cache_valid 404 1m;
+              proxy_cache_use_stale error timeout updating;
+            }
+
+            # Non-sensitive files (tools bundle)
+            location /files/ {
+              alias /srv/files/;
+            }
+
+            # Commercial software: only served to callers presenting the vault token
+            location /private/ {
+              if ($http_x_lab_token != "${LAB_VAULT_TOKEN}") {
+                return 403;
+              }
+              alias /srv/private/;
+            }
+          }
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: lab-services-mitm
+      data:
+        allowlist.py: |
+          """Allow-list for the lab proxy.
+
+          Session pods can only reach this proxy. It intercepts TLS (learners' tools
+          trust the CA it generates) so it can enforce, beyond the host name, that
+          requests are read-only and that only the repositories the workshop uses can be
+          pulled from Docker Hub.
+          """
+          import re
+          from urllib.parse import parse_qs, urlsplit
+
+          from mitmproxy import ctx, http
+
+          # Docker Hub repositories the workshop pulls (keep in sync with the content)
+          ALLOWED_REPOS = {
+              "library/postgres",
+              "bitnamisecure/postgresql",
+              "valkey/valkey",
+              "bitnamisecure/valkey",
+          }
+          REGISTRY_HOSTS = {"registry-1.docker.io", "index.docker.io"}
+          TOKEN_HOSTS = {"auth.docker.io"}
+          # Blob CDNs behind Docker Hub (signed URLs, read-only) and plain read-only hosts
+          CDN_HOSTS = {"production.cloudflare.docker.com", "production.cloudfront.docker.com"}
+          CDN_REGEX = re.compile(r"^docker-images-prod\.[0-9a-f]+\.r2\.cloudflarestorage\.com$")
+          READ_HOSTS = {"tuf-repo-cdn.sigstore.dev", "repo1.maven.org", "repo.maven.apache.org"}
+          CATALOG_HOST = "app-catalog.vmware.com"
+          CATALOG_PATHS = {"/.well-known/cosign.pub"}
+          READ_METHODS = {"GET", "HEAD"}
+          REPO_PATH = re.compile(
+              r"^/v2/((?:[a-z0-9._-]+/)*[a-z0-9._-]+)/(?:manifests|blobs|tags|referrers)(?:/.*)?$")
+          SCOPE = re.compile(r"^repository:(.+):pull$")
+
+          KNOWN_HOSTS = REGISTRY_HOSTS | TOKEN_HOSTS | CDN_HOSTS | READ_HOSTS | {CATALOG_HOST}
+
+
+          def host_allowed(host):
+              return host in KNOWN_HOSTS or bool(CDN_REGEX.match(host))
+
+
+          def decide(method, host, path):
+              """Returns (allowed, reason) for a request that was already tunnelled."""
+              if not host_allowed(host):
+                  return False, "host not allowed"
+              if method not in READ_METHODS:
+                  return False, "read-only"
+              parts = urlsplit(path)
+              if host in REGISTRY_HOSTS:
+                  if parts.path in ("/v2", "/v2/"):
+                      return True, "ok"
+                  match = REPO_PATH.match(parts.path)
+                  if match and match.group(1) in ALLOWED_REPOS:
+                      return True, "ok"
+                  return False, "repository not allowed"
+              if host in TOKEN_HOSTS:
+                  if parts.path != "/token":
+                      return False, "path not allowed"
+                  for scope in parse_qs(parts.query).get("scope", []):
+                      match = SCOPE.match(scope)
+                      if not match or match.group(1) not in ALLOWED_REPOS:
+                          return False, "scope not allowed"
+                  return True, "ok"
+              if host == CATALOG_HOST:
+                  if parts.path in CATALOG_PATHS:
+                      return True, "ok"
+                  return False, "path not allowed"
+              return True, "ok"
+
+
+          class LabAllowlist:
+              def http_connect(self, flow: http.HTTPFlow):
+                  if not host_allowed(flow.request.pretty_host):
+                      self.deny(flow, "host not allowed")
+
+              def request(self, flow: http.HTTPFlow):
+                  req = flow.request
+                  if req.method == "CONNECT" or flow.response:
+                      return
+                  allowed, reason = decide(req.method, req.pretty_host, req.path)
+                  if not allowed:
+                      self.deny(flow, reason)
+
+              def response(self, flow: http.HTTPFlow):
+                  req = flow.request
+                  ctx.log.info(f"{req.method} {req.pretty_host}{req.path.split('?')[0]} {flow.response.status_code}")
+
+              def deny(self, flow: http.HTTPFlow, reason: str):
+                  req = flow.request
+                  ctx.log.warn(f"DENY {req.method} {req.pretty_host}{req.path.split('?')[0]}: {reason}")
+                  flow.response = http.Response.make(
+                      403, f"Blocked by the lab proxy: {reason}\n".encode(), {"Content-Type": "text/plain"})
+
+
+          addons = [LabAllowlist()]
+    - apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: lab-services
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            deployment: lab-services
+        template:
+          metadata:
+            labels:
+              deployment: lab-services
+          spec:
+            securityContext:
+              fsGroup: 1001
+            initContainers:
+            # Open-egress downloads happen here, once per workshop environment
+            - name: download-private-artifacts
+              image: google/cloud-sdk:latest
+              command: ["/bin/bash"]
+              args:
+                - "-c"
+                - |
+                  set -eo pipefail
+                  gcloud auth activate-service-account --key-file=/creds/bucket-reader
+                  gcloud storage cp "gs://${GCP_BUCKET_NAME}/${ADVISOR_FILE_NAME}" /srv/private/advisor.tar
+                  if gcloud storage cp "gs://${GCP_BUCKET_NAME}/${ENTERPRISE_REPO_FILE_NAME}" /srv/private/spring-enterprise-repo.tar.gz; then
+                    echo "Spring Enterprise archive downloaded"
+                  else
+                    echo "WARNING: gs://${GCP_BUCKET_NAME}/${ENTERPRISE_REPO_FILE_NAME} not available"
+                  fi
+                  chmod 644 /srv/private/*
+              env:
+                - name: GCP_BUCKET_NAME
+                  value: "academy-artifacts"
+                - name: ADVISOR_FILE_NAME
+                  value: "spring/binaries/application-advisor-cli-linux/application-advisor-cli-linux-1.6.7.tar" # Change also the version in the workshop content
+                - name: ENTERPRISE_REPO_FILE_NAME
+                  value: "spring/anchor/spring-enterprise-repo-boot-3.5.17.tar.gz"
+              volumeMounts:
+                - name: private
+                  mountPath: /srv/private
+                - name: gcp-key
+                  readOnly: true
+                  mountPath: /creds
+            # cosign, Trivy and ORAS, plus the Trivy vulnerability databases, so
+            # sessions don't download anything from GitHub or ghcr.io. Every
+            # download is checked against the SHA-256 published with the release.
+            - name: build-tools-bundle
+              image: ghcr.io/vmware-tanzu-labs/educates-base-environment:2.5.2
+              command: ["/bin/bash"]
+              args:
+                - "-c"
+                - |
+                  set -eo pipefail
+                  TRIVY_VERSION=0.75.0
+                  TRIVY_SHA256=c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+                  COSIGN_VERSION=3.1.3
+                  COSIGN_SHA256=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+                  ORAS_VERSION=1.3.4
+                  ORAS_SHA256=f27adb935022d94df8dc77719c322dda592c78a0d57a6f7dcdd8d900b248c454
+
+                  export HOME=/tmp/tools-home
+                  BIN_DIR="$HOME/.local/bin"
+                  mkdir -p "$BIN_DIR" "$HOME/tools"
+                  cd "$HOME/tools"
+
+                  curl -sSfLo cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+                  echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+                  install -m 0755 cosign "$BIN_DIR/cosign" && rm cosign
+
+                  TRIVY_TAR="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+                  curl -sSfLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TRIVY_TAR}"
+                  curl -sSfLO "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TRIVY_TAR}.sigstore.json"
+                  echo "${TRIVY_SHA256}  ${TRIVY_TAR}" | sha256sum -c -
+                  tar -xzf "${TRIVY_TAR}" -C "$BIN_DIR" trivy
+
+                  ORAS_TAR="oras_${ORAS_VERSION}_linux_amd64.tar.gz"
+                  curl -sSfLO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/${ORAS_TAR}"
+                  echo "${ORAS_SHA256}  ${ORAS_TAR}" | sha256sum -c -
+                  tar -xzf "${ORAS_TAR}" -C "$BIN_DIR" oras && rm "${ORAS_TAR}"
+
+                  "$BIN_DIR/trivy" image --download-db-only --quiet
+                  "$BIN_DIR/trivy" image --download-java-db-only --quiet || true
+
+                  cd "$HOME"
+                  tar -czf /srv/files/tools.tar.gz .local tools .cache
+              volumeMounts:
+                - name: files
+                  mountPath: /srv/files
+            # The session image has the OpenSSL libraries but not the openssl
+            # command the workshop uses. Package the command with the matching
+            # libraries from the same Fedora release, for setup.d to unpack.
+            - name: build-openssl-bundle
+              image: registry.fedoraproject.org/fedora:42
+              command: ["/bin/bash"]
+              args:
+                - "-c"
+                - |
+                  set -eo pipefail
+                  dnf install -y openssl
+                  mkdir -p /tmp/openssl/.local/bin /tmp/openssl/.local/lib/openssl
+                  cp /usr/bin/openssl /tmp/openssl/.local/lib/openssl/openssl.bin
+                  cp -L /usr/lib64/libssl.so.3 /usr/lib64/libcrypto.so.3 /tmp/openssl/.local/lib/openssl/
+                  cat > /tmp/openssl/.local/bin/openssl <<'WRAPPER'
+                  #!/bin/sh
+                  export LD_LIBRARY_PATH="$HOME/.local/lib/openssl${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+                  exec "$HOME/.local/lib/openssl/openssl.bin" "$@"
+                  WRAPPER
+                  chmod 755 /tmp/openssl/.local/bin/openssl
+                  tar -czf /srv/files/openssl.tar.gz -C /tmp/openssl .local
+              volumeMounts:
+                - name: files
+                  mountPath: /srv/files
+            containers:
+            - name: nginx
+              image: nginxinc/nginx-unprivileged:1.27-alpine
+              ports:
+              - containerPort: 8080
+              env:
+                - name: LAB_VAULT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: advisor-vault
+                      key: token
+              volumeMounts:
+                - name: nginx-template
+                  mountPath: /etc/nginx/templates
+                - name: files
+                  mountPath: /srv/files
+                  readOnly: true
+                - name: private
+                  mountPath: /srv/private
+                  readOnly: true
+                - name: cache
+                  mountPath: /tmp
+            # Intercepting forward proxy with an allow-list (see allowlist.py). The
+            # CA is generated here at startup; only its public certificate is
+            # published (as lab-ca.pem) for the learners' tools to trust.
+            - name: proxy
+              image: mitmproxy/mitmproxy:12.2.3
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  mitmdump --listen-port 3128 --set confdir=/mitm-conf --set block_global=false \
+                    --set stream_large_bodies=1m --set flow_detail=0 -s /scripts/allowlist.py &
+                  PID=$!
+                  until [ -f /mitm-conf/mitmproxy-ca-cert.pem ]; do sleep 1; done
+                  cp /mitm-conf/mitmproxy-ca-cert.pem /srv/files/lab-ca.pem
+                  wait $PID
+              env:
+                # Without this the decision log is buffered and never shows up
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              ports:
+              - containerPort: 3128
+              volumeMounts:
+                - name: mitm-conf
+                  mountPath: /mitm-conf
+                - name: mitm-scripts
+                  mountPath: /scripts
+                - name: files
+                  mountPath: /srv/files
+            volumes:
+            - name: nginx-template
+              configMap:
+                name: lab-services-nginx
+            - name: mitm-scripts
+              configMap:
+                name: lab-services-mitm
+            - name: mitm-conf
+              emptyDir: {}
+            - name: files
+              emptyDir: {}
+            - name: private
+              emptyDir: {}
+            - name: cache
+              emptyDir: {}
+            - name: gcp-key
+              secret:
+                secretName: gcp
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        name: lab-services
+      spec:
+        selector:
+          deployment: lab-services
+        ports:
+        - name: http
+          port: 8080
+          targetPort: 8080
+        - name: proxy
+          port: 3128
+          targetPort: 3128

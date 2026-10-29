@@ -1,0 +1,1 @@
+Fixes from the upstream maintainers, validated against the original report and available before disclosure, beat both AI-generated patches and aftermarket forks. TrueSource turns each of the six places enterprises lose time into time back, and pays for itself by consolidating support, recovering engineering time, and lowering the cost of running open source data services.

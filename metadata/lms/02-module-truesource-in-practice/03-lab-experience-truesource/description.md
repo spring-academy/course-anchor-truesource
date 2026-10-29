@@ -1,0 +1,1 @@
+Take an application through a real Spring security advisory: find a CVE with no open source fix on its release line, compare a major upgrade with a CVE-only Spring Enterprise patch, then verify the signature, SLSA provenance, and evidence of Bitnami Secure Images.

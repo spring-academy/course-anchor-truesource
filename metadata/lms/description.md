@@ -1,0 +1,1 @@
+Learn why AI has shrunk the window to patch open source from weeks to hours, how TrueSource by Broadcom secures the open source software your applications and data services run on, and see it work hands-on.

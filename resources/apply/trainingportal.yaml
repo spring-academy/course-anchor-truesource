@@ -1,0 +1,35 @@
+apiVersion: training.educates.dev/v1beta1
+kind: TrainingPortal
+metadata:
+  name: spring-anchor
+spec:
+  portal:
+    title: Spring Academy / Introduction to TrueSource by Broadcom
+    registration:
+      type: anonymous
+    sessions:
+      maximum: 25
+    updates:
+      workshop: true
+    theme:
+      frame:
+        ancestors:
+        - https://spring.academy
+        - https://*.spring.academy
+        - https://spring-staging.academy
+        - https://*.spring-staging.academy
+        - https://*.vmware.com
+        - https://*.broadcom.com
+        - http://localhost:8080
+  analytics:
+    google:
+      trackingId: "${ANALYTICS_GOOGLE_ID}"
+    clarity:
+      trackingId: "${ANALYTICS_CLARITY_ID}"
+  workshops:
+  - name: spring-anchor
+    reserved: ${TRAINING_PORTAL_RESERVED}
+    expires: 75m      # default time allocated for the learner's session
+    orphaned: 15m     # delete the session after this much inactivity
+    deadline: 150m    # maximum time the learner can extend the session to
+    overdue: 5m       # delete the session if startup takes longer than this

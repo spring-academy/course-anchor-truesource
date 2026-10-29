@@ -1,0 +1,15 @@
+{
+  "id": "spring-anchor-understanding-truesource-module-what-is-truesource",
+  "slug": "what-is-truesource",
+  "title": "What Is TrueSource?",
+  "status": "live",
+  "type": "article",
+  "duration": 600,
+  "order": 2,
+  "instructors": [
+    "spring-ryan-schneider"
+  ],
+  "settings": {
+    "manualCompletion": true
+  }
+}

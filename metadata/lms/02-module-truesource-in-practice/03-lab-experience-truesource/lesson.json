@@ -1,0 +1,19 @@
+{
+  "id": "spring-anchor-truesource-in-practice-module-lab",
+  "slug": "lab",
+  "title": "Lab: Experience TrueSource",
+  "status": "live",
+  "type": "lab",
+  "entitlements": [
+    "auth"
+  ],
+  "duration": 2700,
+  "order": 3,
+  "instructors": [
+    "spring-ryan-schneider"
+  ],
+  "settings": {
+    "educates": "spring-anchor",
+    "manualCompletion": true
+  }
+}

@@ -1,0 +1,28 @@
+# Tools installed by setup.d/01-workshop-setup.sh (cosign, Trivy, ORAS)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Maven wrapper downloads go through the in-cluster mirror (no direct internet access in the session)
+export MVNW_REPOURL="$MAVEN_MIRROR_URL"
+
+# Public hosts the workshop teaches with are reached through the in-cluster
+# proxy, which only allows read-only requests to those hosts. Set for the
+# learner's terminals only so the Educates services in the session keep talking
+# to the cluster directly.
+export HTTP_PROXY="http://lab-services:3128" HTTPS_PROXY="http://lab-services:3128"
+export http_proxy="$HTTP_PROXY" https_proxy="$HTTPS_PROXY"
+export NO_PROXY="localhost,127.0.0.1,lab-services,.svc,.cluster.local,.${INGRESS_DOMAIN}"
+export no_proxy="$NO_PROXY"
+
+# The proxy intercepts TLS, so trust its CA (system CAs plus the lab CA) in the
+# tools used in the workshop (cosign, Trivy, ORAS, curl)
+if [ -f "$HOME/.lab-ca/bundle.pem" ]; then
+    export SSL_CERT_FILE="$HOME/.lab-ca/bundle.pem" CURL_CA_BUNDLE="$HOME/.lab-ca/bundle.pem"
+fi
+
+# Trivy would otherwise try to reach its version check service, which the proxy does not allow
+export TRIVY_SKIP_VERSION_CHECK=true
+
+# Fix the emoji rendering of the Application Advisor CLI in the workshop terminal
+advisor() {
+    TERM=dumb command advisor "$@"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "spring-anchor-truesource-in-practice-module-truesource-across-your-stack",
+  "slug": "truesource-across-your-stack",
+  "title": "TrueSource Across Your Stack",
+  "status": "live",
+  "type": "article",
+  "duration": 480,
+  "order": 1,
+  "instructors": [
+    "spring-ryan-schneider"
+  ],
+  "settings": {
+    "manualCompletion": true
+  }
+}

@@ -1,0 +1,16 @@
+pathways:
+  default: workshop
+
+  paths:
+    workshop:
+      title: "Experience TrueSource by Broadcom"
+
+      steps:
+      - 00-workshop-overview
+      - 01-meet-the-app
+      - 02-find-the-exposure
+      - 03-the-oss-path
+      - 04-the-truesource-path
+      - 05-trusted-artifacts
+      - 06-the-data-tier
+      - 99-workshop-summary

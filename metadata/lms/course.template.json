@@ -1,0 +1,19 @@
+{
+    "id": "spring-anchor",
+    "slug": "truesource-intro",
+    "title": "Introduction to TrueSource by Broadcom",
+    "status": "unlisted",
+    "level": "beginner",
+    "order": 900,
+    "instructors": [ "spring-ryan-schneider" ],
+    "topics": ["truesource"],
+    "settings": {
+        "thumbnail": "https://raw.githubusercontent.com/spring-academy/course-anchor-truesource/main/metadata/images/course-thumbnail-truesource.jpg",
+        "debug.version": "${GITHUB_REF_NAME}",
+        "debug.commit": "${GITHUB_SHA}",
+        "debug.updated": "${DEBUG_DATE}",
+        "debug.who": "${GITHUB_ACTOR}",
+        "debug.github-workflow": "${GITHUB_WORKFLOW}"
+    },
+    "entitlements": [ "auth" ]
+}

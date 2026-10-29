@@ -1,0 +1,1 @@
+Customers have used Application Advisor to cut upgrade effort by 70 percent and patch a portfolio of 3,300 repositories in 42 days, and have used Broadcom's data services to move from proprietary databases to PostgreSQL and to run enterprise-wide Valkey services with 24x7 support.

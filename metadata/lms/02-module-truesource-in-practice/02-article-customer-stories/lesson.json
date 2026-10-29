@@ -1,0 +1,15 @@
+{
+  "id": "spring-anchor-truesource-in-practice-module-customer-stories",
+  "slug": "customer-stories",
+  "title": "Customer Stories",
+  "status": "live",
+  "type": "article",
+  "duration": 360,
+  "order": 2,
+  "instructors": [
+    "spring-ryan-schneider"
+  ],
+  "settings": {
+    "manualCompletion": true
+  }
+}
